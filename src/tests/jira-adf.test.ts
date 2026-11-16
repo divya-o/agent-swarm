@@ -97,6 +97,38 @@ describe("jira/adf — extractText", () => {
     const out = extractText(adf);
     expect(out).toContain("- alpha");
     expect(out).toContain("- beta");
+
+    const item = (text: string) => ({
+      type: "listItem",
+      content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+    });
+    const ordered = (attrs?: Record<string, unknown>) => ({
+      type: "orderedList",
+      attrs,
+      content: [item("first"), item("second")],
+    });
+    expect(extractText(ordered())).toBe("1. first\n2. second");
+    expect(extractText(ordered({ order: 3 }))).toBe("3. first\n4. second");
+    // Link cards carry their URL in attrs.url, not content.
+    expect(
+      extractText({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              { type: "text", text: "Repro steps are in " },
+              { type: "inlineCard", attrs: { url: "https://example.atlassian.net/wiki/x" } },
+            ],
+          },
+          { type: "blockCard", attrs: { url: "https://github.com/o/r/pull/1" } },
+          { type: "embedCard", attrs: { url: "https://example.com/embed" } },
+          ordered(),
+        ],
+      }),
+    ).toBe(
+      "Repro steps are in https://example.atlassian.net/wiki/x\nhttps://github.com/o/r/pull/1\nhttps://example.com/embed\n1. first\n2. second",
+    );
   });
 
   test("handles headings, codeBlock, blockquote, hardBreak", () => {

@@ -8,7 +8,8 @@
  * Reference: https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/
  *
  * Supported node types: paragraph, heading, bulletList, orderedList, listItem,
- * text, mention, hardBreak, codeBlock, blockquote. Unknown types descend into
+ * text, mention, hardBreak, codeBlock, blockquote, inlineCard, blockCard,
+ * embedCard. Unknown types descend into
  * `content` if present, else are skipped silently. In non-prod environments a
  * debug line is emitted so unhandled cases surface during dev.
  */
@@ -43,7 +44,8 @@ export function extractText(adf: unknown): string {
 
   const out: string[] = [];
 
-  const visit = (node: AdfNode): void => {
+  // `marker` is the list-item prefix
+  const visit = (node: AdfNode, marker = "- "): void => {
     const type = typeof node.type === "string" ? node.type : "";
 
     switch (type) {
@@ -73,13 +75,28 @@ export function extractText(adf: unknown): string {
         out.push("\n");
         return;
       }
-      case "bulletList":
-      case "orderedList": {
+      case "inlineCard":
+      case "blockCard":
+      case "embedCard": {
+        // Link cards have no `content`; the URL lives in attrs.
+        const url = node.attrs?.url;
+        if (typeof url === "string") out.push(type === "inlineCard" ? url : `${url}\n`);
+        return;
+      }
+      case "bulletList": {
         for (const child of asNodeArray(node.content)) visit(child);
         return;
       }
+      case "orderedList": {
+        const order = node.attrs?.order;
+        const start = typeof order === "number" ? order : 1;
+        asNodeArray(node.content).forEach((child, i) => {
+          visit(child, `${start + i}. `);
+        });
+        return;
+      }
       case "listItem": {
-        out.push("- ");
+        out.push(marker);
         for (const child of asNodeArray(node.content)) visit(child);
         // Block children inside a listItem already trail a newline, so we don't
         // double-add. But if the listItem only contained inline content, ensure
